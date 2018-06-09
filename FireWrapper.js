@@ -8,13 +8,18 @@ import { config } from '../../FirebaseCredentials'
 /*
    asynOpts= {
        addIfNotFound: true,
-       key: 'key'
+       key: 'key',
+       onChildAdded: null,
+       onChildChanged: null,
+       onChilRemoved: null
    }
 */
 
 var db;
 export function initFB() {
-    firebase.initializeApp(config)
+    if (!firebase.apps.length) {
+      firebase.initializeApp(config)
+    }
     db = firebase.database()
 }
 
@@ -29,10 +34,20 @@ export var syncFB = {
     },
 
     getOpts: (opts) => {
-        if(!opts) return syncFB.getDefaultOpts();
-        if(opts.validated) return opts;
+        if(opts && opts.validated) return opts;
+        if(!opts) return syncFB.getDefaultOpts();        
 
-        // TODO: verify each parameter exist or add a default value
+        //verify each parameter exist or add a default value
+        var defs = syncFB.getDefaultOpts();
+        for(var key in defs){
+           if(opts[key] === undefined){
+               opts[key] = defs[key];
+           }
+        }
+        opts.validated = true;
+        console.log('opts validated', opts);
+
+        return opts;
     },
 
     updateObject(base, upd, key){
@@ -43,25 +58,29 @@ export var syncFB = {
         }
     },
 
-    subscribeAll: (ref, list, asynOpts) => {
-        var opts = syncFB.getOpts(asynOpts);
+    subscribeAll: (ref, list, synOpts) => {
+        var opts = syncFB.getOpts(synOpts);
         syncFB.subscribeNew(ref, list, opts);
         syncFB.subscribeChanged(ref, list, opts);
         syncFB.subscribeRemoved(ref, list, opts);
     },
 
-    subscribeNew: (ref, list, asynOpts) => {
-        var opts = syncFB.getOpts(asynOpts);
+    subscribeNew: (ref, list, synOpts) => {        
+        var opts = syncFB.getOpts(synOpts);
         db.ref(`/${ref}`)
-            .on('child_added', function (snap) {
+            .on('child_added', function (snap, xy) {                
                 var tmp = snap.val();
                 tmp[opts.key] = snap.ref.key;
-                list.push(tmp);
+                list.push(tmp);                
+                if(synOpts.onChildAdded){
+                    synOpts.onChildAdded(tmp);
+                }
             })
     },
 
-    subscribeChanged: (ref, list, asynOpts) => {
-        var opts = syncFB.getOpts(asynOpts);
+
+    subscribeChanged: (ref, list, synOpts) => {
+        var opts = syncFB.getOpts(synOpts);
         db.ref(`/${ref}`)
             .on('child_changed', function (snap, key) {
                 var tmp = snap.val();
@@ -79,8 +98,8 @@ export var syncFB = {
             })
     },
 
-    subscribeRemoved: (ref, list, asynOpts) => {
-        var opts = syncFB.getOpts(asynOpts);
+    subscribeRemoved: (ref, list, synOpts) => {
+        var opts = syncFB.getOpts(synOpts);
         db.ref(`/${ref}`)
             .on('child_removed', function (snap, key) {
                 var tmp = snap.val();
